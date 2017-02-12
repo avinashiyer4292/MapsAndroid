@@ -16,27 +16,27 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity {
+public class ContactsActivity extends AppCompatActivity {
     TextToSpeech t1;
     RelativeLayout relativeLayout;
     private final int SPEECH_RECOGNITION_CODE = 1;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_contacts);
         t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
                 if(status != TextToSpeech.ERROR) {
                     t1.setLanguage(Locale.UK);
-                    systemSpeech("Welcome");
-                    systemSpeech("Tap your phone to enter your destination!");
+                    //systemSpeech("Welcome");
+                    systemSpeech("Tap your phone to add your contact!");
 
 
                 }
             }
         });
-        relativeLayout= (RelativeLayout)findViewById(R.id.activity_main);
+        relativeLayout= (RelativeLayout)findViewById(R.id.activity_contacts);
         relativeLayout.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view) {
@@ -45,37 +45,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-    }
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private void ttsGreater21(String text){
-        String utteranceId=this.hashCode() + "";
-        t1.speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId);
-    }
-    @SuppressWarnings("deprecation")
-    private void ttsUnder20(String text){
-        HashMap<String, String> map = new HashMap<>();
-        map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "MessageId");
-        t1.speak(text, TextToSpeech.QUEUE_ADD, map);
-    }
 
-    private void systemSpeech(String text){
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-
-            ttsGreater21(text);
-//            text="Tap your phone to enter your destination.";
-//            ttsGreater21(text);
-        } else {
-            ttsUnder20(text);
-//            text="Tap your phone to enter your destination.";
-//            ttsUnder20(text);
-        }
-    }
-    public void onPause(){
-//        if(t1 !=null){
-//            t1.stop();
-//            t1.shutdown();
-//        }
-        super.onPause();
     }
     private void startSpeechToText() {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -108,16 +78,35 @@ public class MainActivity extends AppCompatActivity {
                     //Toast.makeText(getApplicationContext(),text,Toast.LENGTH_SHORT).show();
                     systemSpeech("Your destination is: "+text);
                     //systemSpeech("Please tap phone again to confirm.");
-                    goToContacts();
+                    //goToContacts();
 
                 }
                 break;
             }
         }
     }
-    private void goToContacts(){
-        Intent i =new Intent(MainActivity.this,ContactsActivity.class);
-        startActivity(i);
-        finish();
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private void ttsGreater21(String text){
+        String utteranceId=this.hashCode() + "";
+        t1.speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId);
+    }
+    @SuppressWarnings("deprecation")
+    private void ttsUnder20(String text){
+        HashMap<String, String> map = new HashMap<>();
+        map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "MessageId");
+        t1.speak(text, TextToSpeech.QUEUE_ADD, map);
+    }
+
+    private void systemSpeech(String text){
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+
+            ttsGreater21(text);
+//            text="Tap your phone to enter your destination.";
+//            ttsGreater21(text);
+        } else {
+            ttsUnder20(text);
+//            text="Tap your phone to enter your destination.";
+//            ttsUnder20(text);
+        }
     }
 }
