@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">MapsApp</string>
+    <string name="app_name">SafeTracker</string>
     <string name="title_activity_maps">Map</string>
 </resources>

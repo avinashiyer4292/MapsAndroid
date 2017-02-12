@@ -1,18 +1,39 @@
 package com.avinashiyer.mapsapp;
 
+import android.annotation.TargetApi;
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.speech.tts.TextToSpeech;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.support.v4.content.ContextCompat;
+import android.telephony.SmsManager;
+import android.util.Base64;
 import android.util.Log;
+import android.widget.Toast;
 
+import com.android.volley.AuthFailureError;
+import com.android.volley.NetworkResponse;
+import com.android.volley.Request;
+import com.android.volley.Response;
+import com.android.volley.ServerError;
+import com.android.volley.VolleyError;
+import com.android.volley.VolleyLog;
+import com.android.volley.toolbox.HttpHeaderParser;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.StringRequest;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationServices;
@@ -22,10 +43,19 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
         GoogleApiClient.ConnectionCallbacks,
@@ -38,7 +68,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private static final String TAG = "MAPACTIVITY";
     private GoogleApiClient mGoogleApiClient;
     private Location mCurrentLocation;
-
+    private ProgressDialog pDialog;
+    private static final int MY_PERMISSIONS_REQUEST_SEND_SMS =0 ;
+    private static final String url = "https://api.catapult.inetwork.com/v1/users/u-7yzqqs547oitbxp43nzfthy/messages";
+    TextToSpeech t1;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -54,6 +87,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .build();
 
 
+
     }
 
     @Override
@@ -61,10 +95,21 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         super.onStart();
         Log.d(TAG, "onStart called!");
         mGoogleApiClient.connect();
+        t1 = new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status != TextToSpeech.ERROR) {
+                    t1.setLanguage(Locale.UK);
+                    systemSpeech("You have started your journey!");
+
+
+                }
+            }
+        });
     }
 
     @Override
-    protected void onStop() {
+    protected void onStop(){
         super.onStop();
         Log.d(TAG, "onStop called!");
         if (mGoogleApiClient != null && mGoogleApiClient.isConnected())
@@ -123,7 +168,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private void initCamera(Location location) {
         LatLng l = getCurrentLocation(MapsActivity.this);
-        CameraPosition cameraPosition = new CameraPosition.Builder()
+        final CameraPosition cameraPosition = new CameraPosition.Builder()
                 .target(l)
                 .bearing(0.0f)
                 .tilt(0.0f)
@@ -153,16 +198,170 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .width(10)
                 .color(Color.BLUE)
         );
-        new java.util.Timer().schedule(
-                new java.util.TimerTask() {
+
+//        new java.util.Timer().schedule(
+//                new java.util.TimerTask() {
+//                    @Override
+//                    public void run() {
+//                        // your code here
+//                        Log.d(TAG,"HI");
+
+//                    }
+//                },
+//                5000
+//        );
+        //try{Thread.sleep(10000);}catch(Exception e){}
+        final CameraPosition newPosition = new CameraPosition.Builder()
+                .target(destination)
+                .bearing(0.0f)
+                .tilt(0.0f)
+                .zoom(14f)
+                .build();
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                //Do something here
+                MarkerAnimation.animateMarkerToGB(marker, destination, new LatLngInterpolator.Spherical());
+
+                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(newPosition));
+                pDialog = new ProgressDialog(MapsActivity.this);
+                pDialog.setMessage("Sending SMS...");
+                pDialog.setIndeterminate(false);
+                pDialog.show();
+                initSpeech();
+                sendSMS(Utils.url);
+                drawCircle(destination);
+                addFriendMarkers();
+            }
+        }, 10000);
+
+    }
+    private void initSpeech(){
+        t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status != TextToSpeech.ERROR) {
+                    t1.setLanguage(Locale.UK);
+                    systemSpeech("You have reached your destination.");
+                    systemSpeech("An SMS has been sent to your nearby friends.");
+
+
+                }
+            }
+        });
+    }
+    private void addFriendMarkers(){
+        LatLng l = new LatLng(35.905154, -79.051382);
+        MarkerOptions options = new MarkerOptions().position( l );
+        options.icon(BitmapDescriptorFactory.fromBitmap(
+                BitmapFactory.decodeResource( getResources(),
+                        R.drawable.face1 ) ));
+        mMap.addMarker(options);
+
+        l = new LatLng(35.912019, -79.045052);
+        options = new MarkerOptions().position(l);
+        options.icon(BitmapDescriptorFactory.fromBitmap(
+                BitmapFactory.decodeResource( getResources(),
+                        R.drawable.face2 ) ));
+        mMap.addMarker(options);
+
+        l = new LatLng(35.902432, -79.046435);
+        options = new MarkerOptions().position(l);
+        options.icon(BitmapDescriptorFactory.fromBitmap(
+                BitmapFactory.decodeResource( getResources(),
+                        R.drawable.face3 ) ));
+        mMap.addMarker(options);
+
+        l = new LatLng(35.908336, -79.039329);
+        options = new MarkerOptions().position(l);
+        options.icon(BitmapDescriptorFactory.fromBitmap(
+                BitmapFactory.decodeResource( getResources(),
+                        R.drawable.face4 ) ));
+        mMap.addMarker(options);
+
+
+    }
+    private void drawCircle( LatLng location ) {
+        CircleOptions options = new CircleOptions();
+        options.center( location );
+        //Radius in meters
+        options.radius( 1300 );
+        options.fillColor( getResources()
+                .getColor( R.color.fillColor ) );
+        options.strokeColor( getResources()
+                .getColor( R.color.strokeColor ) );
+        options.strokeWidth( 10 );
+        mMap.addCircle(options);
+    }
+    private void sendSMS(String url){
+
+        String smsText = "";
+        String json = "{\"from\": \"+19047120118\", \"to\": \"+13522830967\", \"text\": \"User has reached her destination!\"}";
+        json= json.replaceAll("\n", "\\n");
+        json = json.substring(json.indexOf("{"));
+        JSONObject jsonBody=null;
+        try{
+            jsonBody = new JSONObject(json);
+        }catch(Exception e){
+
+        }
+        Log.d(TAG, "Json object: "+jsonBody);
+        JsonObjectRequest jsonObjReq = new JsonObjectRequest(Request.Method.POST,
+                url, jsonBody,
+                new Response.Listener<JSONObject>() {
+
                     @Override
-                    public void run() {
-                        // your code here
-                        MarkerAnimation.animateMarkerToGB(marker, destination, new LatLngInterpolator.Spherical());
+                    public void onResponse(JSONObject response) {
+                        Log.d(TAG,"IN onRepsonse");
+                        Log.d(TAG, response.toString());
+                        pDialog.hide();
                     }
-                },
-                5000
-        );
+                }, new Response.ErrorListener() {
+
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Log.d(TAG,"IN onErrorResponse");
+                Log.d(TAG,"Error is: "+error.toString());
+                VolleyLog.d(TAG, "Error: " + error.getMessage());
+                NetworkResponse response = error.networkResponse;
+                if (error instanceof ServerError && response != null) {
+                    try {
+                        String res = new String(response.data,
+                                HttpHeaderParser.parseCharset(response.headers, "utf-8"));
+                        // Now you can use any deserializer to make sense of data
+                        Log.d("NetworkResponseError",res.toString());
+                        JSONObject obj = new JSONObject(res);
+                    } catch (UnsupportedEncodingException e1) {
+                        // Couldn't properly decode data to string
+                        e1.printStackTrace();
+                    } catch (JSONException e2) {
+                        // returned data is not JSONObject?
+                        e2.printStackTrace();
+                    }
+                }
+                // hide the progress dialog
+                pDialog.hide();
+            }
+
+
+        }){
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
+                Map<String,String> params = new HashMap<String, String>();
+
+                String credentials = Utils.username+":"+Utils.password;
+                String auth = "Basic "
+                        + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
+                String auth1 =Utils.auth;
+                params.put("Authorization",auth1);
+                //params.put("Content-Type","application/json");
+
+                return params;
+            }};
+
+// Adding request to request queue
+        MapApplication.getInstance().addToRequestQueue(jsonObjReq);
+
     }
 
     public LatLng getCurrentLocation(Context context) {
@@ -222,6 +421,31 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+    }
+
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private void ttsGreater21(String text){
+        String utteranceId=this.hashCode() + "";
+        t1.speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId);
+    }
+    @SuppressWarnings("deprecation")
+    private void ttsUnder20(String text){
+        HashMap<String, String> map = new HashMap<>();
+        map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "MessageId");
+        t1.speak(text, TextToSpeech.QUEUE_ADD, map);
+    }
+
+    private void systemSpeech(String text){
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+
+            ttsGreater21(text);
+//            text="Tap your phone to enter your destination.";
+//            ttsGreater21(text);
+        } else {
+            ttsUnder20(text);
+//            text="Tap your phone to enter your destination.";
+//            ttsUnder20(text);
+        }
     }
 
 }
